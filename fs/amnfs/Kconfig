@@ -1,0 +1,44 @@
+config AMNFS
+	tristate "Amnesic filesystem support"
+	help
+	  Amnfs is an experimental Linux file system for hard disks.
+
+	  To compile this file system support as a module, choose M here: the
+	  module will be called amnfs.
+
+	  If unsure, say Y.
+
+config AMNFS_XATTR
+	bool "Amnfs extended attributes"
+	depends on AMNFS
+	help
+	  Extended attributes are name:value pairs associated with inodes by
+	  the kernel or by users (see the attr(5) manual page, or visit
+	  <http://acl.bestbits.at/> for details).
+
+	  If unsure, say N.
+
+config AMNFS_POSIX_ACL
+	bool "Amnfs POSIX Access Control Lists"
+	depends on AMNFS_XATTR
+	select FS_POSIX_ACL
+	help
+	  Posix Access Control Lists (ACLs) support permissions for users and
+	  groups beyond the owner/group/world scheme.
+
+	  To learn more about Access Control Lists, visit the Posix ACLs for
+	  Linux website <http://acl.bestbits.at/>.
+
+	  If you don't know what Access Control Lists are, say N
+
+config AMNFS_SECURITY
+	bool "Amnfs Security Labels"
+	depends on AMNFS_XATTR
+	help
+	  Security labels support alternative access control models
+	  implemented by security modules like SELinux.  This option
+	  enables an extended attribute handler for file security
+	  labels in the amnfs filesystem.
+
+	  If you are not using a security module that requires using
+	  extended attributes for file security labels, say N.
