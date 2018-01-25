@@ -114,13 +114,15 @@ static int refresh_imported_device_list(void)
 	char status[MAX_STATUS_NAME+1] = "status";
 	int i, ret;
 
-	for (i = 0; i < vhci_driver->ncontrollers; i++) {
-		if (i > 0)
+        for (i = 0; ; i++) {
+                if (i > 0)
 			snprintf(status, sizeof(status), "status.%d", i);
 
-		attr_status = udev_device_get_sysattr_value(vhci_driver->hc_device,
+                attr_status = udev_device_get_sysattr_value(vhci_driver->hc_device,
 							    status);
 		if (!attr_status) {
+                        if (i > 0) break;
+
 			err("udev_device_get_sysattr_value failed");
 			return -1;
 		}
@@ -148,33 +150,6 @@ static int get_nports(void)
 	return (int)strtoul(attr_nports, NULL, 10);
 }
 
-static int vhci_hcd_filter(const struct dirent *dirent)
-{
-	return strcmp(dirent->d_name, "vhci_hcd") >= 0;
-}
-
-static int get_ncontrollers(void)
-{
-	struct dirent **namelist;
-	struct udev_device *platform;
-	int n;
-
-	platform = udev_device_get_parent(vhci_driver->hc_device);
-	if (platform == NULL)
-		return -1;
-
-	n = scandir(udev_device_get_syspath(platform), &namelist, vhci_hcd_filter, NULL);
-	if (n < 0)
-		err("scandir failed");
-	else {
-		for (int i = 0; i < n; i++)
-			free(namelist[i]);
-		free(namelist);
-	}
-
-	return n;
-}
-
 /*
  * Read the given port's record.
  *
@@ -199,7 +174,7 @@ static int read_record(int rhport, char *host, unsigned long host_len,
 	if (!buffer)
 		return -1;
 
-	snprintf(path, PATH_MAX, VHCI_STATE_PATH"/port%d", rhport);
+	snprintf(path, PATH_MAX, VHCI_STATE_PATH"/port%d-%d", vhci_driver->ix, rhport);
 
 	file = fopen(path, "r");
 	if (!file) {
@@ -238,11 +213,18 @@ static int read_record(int rhport, char *host, unsigned long host_len,
 	return 0;
 }
 
+static int vhci_path_to_ix(const char *path)
+{
+        int i = strlen(path);
+        while (--i >= 0 && path[i] >= '0' && path[i] <= '9');
+        return atoi(path + i + 1);
+}
+
 /* ---------------------------------------------------------------------- */
 
-int usbip_vhci_driver_open(void)
+int usbip_vhci_driver_open_path(const char *path)
 {
-	udev_context = udev_new();
+        udev_context = udev_new();
 	if (!udev_context) {
 		err("udev_new failed");
 		return -1;
@@ -252,13 +234,14 @@ int usbip_vhci_driver_open(void)
 
 	/* will be freed in usbip_driver_close() */
 	vhci_driver->hc_device =
-		udev_device_new_from_subsystem_sysname(udev_context,
-						       USBIP_VHCI_BUS_TYPE,
-						       USBIP_VHCI_DEVICE_NAME);
+		udev_device_new_from_syspath(udev_context, path);
+
 	if (!vhci_driver->hc_device) {
 		err("udev_device_new_from_subsystem_sysname failed");
 		goto err;
 	}
+
+        vhci_driver->ix = vhci_path_to_ix(path);
 
 	vhci_driver->nports = get_nports();
 	dbg("available ports: %d", vhci_driver->nports);
@@ -268,14 +251,6 @@ int usbip_vhci_driver_open(void)
 		goto err;
 	} else if (vhci_driver->nports > MAXNPORT) {
 		err("port number exceeds %d", MAXNPORT);
-		goto err;
-	}
-
-	vhci_driver->ncontrollers = get_ncontrollers();
-	dbg("available controllers: %d", vhci_driver->ncontrollers);
-
-	if (vhci_driver->ncontrollers <=0) {
-		err("no available usb controllers");
 		goto err;
 	}
 
@@ -297,6 +272,43 @@ err:
 	return -1;
 }
 
+int usbip_vhci_driver_open(void)
+{
+        return usbip_vhci_driver_open_ix(0);
+}
+
+int usbip_vhci_driver_open_ix(int vhci_ix)
+{
+        struct udev *udev_context;
+        struct udev_device *dev = NULL;
+        char vhci_name[PATH_MAX + 1];
+        int len, rc = -1;
+
+        len = snprintf(vhci_name, PATH_MAX, "%s.%d", USBIP_VHCI_DEVICE_NAME_PREFIX, vhci_ix);
+        if (len >= PATH_MAX) {
+                err("vhci device name is too long");
+                return -1;
+        }
+
+	udev_context = udev_new();
+	if (!udev_context) {
+		err("udev_new failed");
+                return -1;
+	}
+
+        dev = udev_device_new_from_subsystem_sysname(udev_context,
+                                                     USBIP_VHCI_BUS_TYPE,
+                                                     vhci_name);
+        if (!dev)
+                err("udev_device_from_subsystem_sysname failed to open %s", vhci_name);
+        else {
+                rc = usbip_vhci_driver_open_path(udev_device_get_syspath(dev));
+                udev_device_unref(dev);
+        }
+
+        udev_unref(udev_context);
+        return rc;
+}
 
 void usbip_vhci_driver_close(void)
 {
@@ -458,4 +470,9 @@ int usbip_vhci_imported_device_dump(struct usbip_imported_device *idev)
 	}
 
 	return 0;
+}
+
+int usbip_vhci_driver_ix(void)
+{
+        return vhci_driver->ix;
 }
