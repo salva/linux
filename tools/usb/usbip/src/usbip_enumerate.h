@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2011 matt mooney <mfm@muteddisk.com>
- *               2005-2007 Takahiro Hirofuchi
+ * Copyright (C) 2018 Qindel Formacion y Servicios SL
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,11 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __UTILS_H
-#define __UTILS_H
+#ifndef __USBIP_ENUMERATE_H
+#define __USBIP_ENUMERATE_H
 
-int modify_match_busid(char *busid, int add);
-int atoi_with_check(const char *str, int *pi);
+#include <libudev.h>
 
-#endif /* __UTILS_H */
+struct udev_enumerate *vhci_enumerate(void);
 
+#endif /* __USBIP_ENUMERATE_H */
